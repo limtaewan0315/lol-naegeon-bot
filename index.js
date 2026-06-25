@@ -49,6 +49,10 @@ async function findMemberByName(guild, name) {
   return found || null;
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function moveTeam(guild, players, channelId, teamLabel) {
   for (const p of players) {
     try {
@@ -67,8 +71,12 @@ async function moveTeam(guild, players, channelId, teamLabel) {
       }
       await member.voice.setChannel(channelId);
       console.log(`✅ [${teamLabel}] ${p.name} 님 이동 완료`);
+      // 디스코드 rate limit 방지를 위해 각 이동 사이에 1.5초 대기
+      await sleep(3000);
     } catch (err) {
       console.error(`❌ [${teamLabel}] ${p.name} 이동 실패:`, err.message);
+      // 실패해도 다음 멤버 처리 전에 약간 대기
+      await sleep(3000);
     }
   }
 }
