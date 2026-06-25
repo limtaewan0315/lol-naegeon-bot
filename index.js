@@ -27,6 +27,7 @@ const client = new Client({
 });
 
 let lastResultJson = null; // 중복 이동 방지용
+let isProcessing = false; // 이동 처리 중 중복 폴링 방지
 
 client.once('ready', () => {
   console.log(`✅ 봇 로그인 완료: ${client.user.tag}`);
@@ -84,6 +85,7 @@ async function moveTeam(guild, players, channelId, teamLabel) {
 function startWatching() {
   console.log('👀 팀 편성 결과 감지 시작... (5초마다 확인)');
   setInterval(async () => {
+    if (isProcessing) return; // 이전 이동 작업이 아직 진행 중이면 건너뜀
     try {
       const { data: sess, error } = await supabase
         .from('session')
@@ -104,6 +106,7 @@ function startWatching() {
       const result = sess.result;
       if (!result.team1 || !result.team2) return;
 
+      isProcessing = true;
       console.log('🎮 새로운 팀 편성 감지! 멤버 이동 시작...');
 
       const guild = await client.guilds.fetch(GUILD_ID);
@@ -113,6 +116,8 @@ function startWatching() {
       console.log('✅ 팀 이동 처리 완료!');
     } catch (err) {
       console.error('폴링 오류:', err.message);
+    } finally {
+      isProcessing = false;
     }
   }, 5000);
 }
