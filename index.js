@@ -38,16 +38,33 @@ client.on('error', (err) => {
   console.error('❌ 클라이언트 오류:', err.message);
 });
 
-// 서버 닉네임/유저네임/글로벌네임 중 하나라도 일치하면 찾기
-async function findMemberByName(guild, name) {
-  const members = await guild.members.fetch();
-  const found = members.find(m => {
+// 서버 닉네임/유저네임/글로벌네임 중 하나라도 일치하면 찾기 (캐시된 멤버 목록 사용)
+function findMemberInCache(membersCache, name) {
+  return membersCache.find(m => {
     const nick = m.nickname || '';
     const username = m.user.username || '';
     const globalName = m.user.globalName || '';
     return nick === name || username === name || globalName === name;
-  });
-  return found || null;
+  }) || null;
+}
+
+async function fetchMembersWithRetry(guild, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const members = await guild.members.fetch();
+      return [...members.values()];
+    } catch (err) {
+      const retryAfterMatch = /Retry after ([\d.]+) seconds/i.exec(err.message || '');
+      if (retryAfterMatch) {
+        const waitMs = Math.ceil(parseFloat(retryAfterMatch[1]) * 1000) + 500;
+        console.log(`⏳ 멤버 목록 조회 rate limit, ${(waitMs/1000).toFixed(1)}초 대기 후 재시도`);
+        await sleep(waitMs);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('멤버 목록 조회 재시도 횟수 초과');
 }
 
 function sleep(ms) {
@@ -77,9 +94,9 @@ async function moveOneMember(member, channelId, teamLabel, name, maxRetries = 3)
   return false;
 }
 
-async function moveTeam(guild, players, channelId, teamLabel) {
+async function moveTeam(guild, players, channelId, teamLabel, membersCache) {
   for (const p of players) {
-    const member = await findMemberByName(guild, p.name);
+    const member = findMemberInCache(membersCache, p.name);
     if (!member) {
       console.log(`⚠️ [${teamLabel}] 멤버를 찾을 수 없음: ${p.name}`);
       continue;
@@ -126,8 +143,9 @@ function startWatching() {
       console.log('🎮 새로운 팀 편성 감지! 멤버 이동 시작...');
 
       const guild = await client.guilds.fetch(GUILD_ID);
-      await moveTeam(guild, result.team1, BLUE_CHANNEL_ID, '블루팀');
-      await moveTeam(guild, result.team2, RED_CHANNEL_ID, '레드팀');
+      const membersCache = await fetchMembersWithRetry(guild);
+      await moveTeam(guild, result.team1, BLUE_CHANNEL_ID, '블루팀', membersCache);
+      await moveTeam(guild, result.team2, RED_CHANNEL_ID, '레드팀', membersCache);
 
       console.log('✅ 팀 이동 처리 완료!');
     } catch (err) {
