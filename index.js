@@ -1,6 +1,9 @@
 // 내전 매니저 디스코드 봇
 // 팀 편성 결과를 Supabase에서 감지해서 음성 채널 자동 이동
 
+// Node.js 20에서 Supabase realtime이 사용할 WebSocket 폴리필
+global.WebSocket = require('ws');
+
 const { Client, GatewayIntentBits } = require('discord.js');
 const { createClient } = require('@supabase/supabase-js');
 
