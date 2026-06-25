@@ -54,31 +54,47 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function moveOneMember(member, channelId, teamLabel, name, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await member.voice.setChannel(channelId);
+      console.log(`✅ [${teamLabel}] ${name} 님 이동 완료`);
+      return true;
+    } catch (err) {
+      // 디스코드 rate limit 에러면 알려준 시간만큼 정확히 기다린 후 재시도
+      const retryAfterMatch = /Retry after ([\d.]+) seconds/i.exec(err.message || '');
+      if (retryAfterMatch) {
+        const waitMs = Math.ceil(parseFloat(retryAfterMatch[1]) * 1000) + 500; // 여유 0.5초 추가
+        console.log(`⏳ [${teamLabel}] ${name} 님 rate limit, ${(waitMs/1000).toFixed(1)}초 대기 후 재시도 (시도 ${attempt + 1}/${maxRetries + 1})`);
+        await sleep(waitMs);
+        continue;
+      }
+      console.error(`❌ [${teamLabel}] ${name} 이동 실패:`, err.message);
+      return false;
+    }
+  }
+  console.error(`❌ [${teamLabel}] ${name} 이동 실패: 재시도 횟수 초과`);
+  return false;
+}
+
 async function moveTeam(guild, players, channelId, teamLabel) {
   for (const p of players) {
-    try {
-      const member = await findMemberByName(guild, p.name);
-      if (!member) {
-        console.log(`⚠️ [${teamLabel}] 멤버를 찾을 수 없음: ${p.name}`);
-        continue;
-      }
-      if (!member.voice.channelId) {
-        console.log(`⚠️ [${teamLabel}] ${p.name} 님은 음성 채널에 없어요`);
-        continue;
-      }
-      if (member.voice.channelId === channelId) {
-        console.log(`ℹ️ [${teamLabel}] ${p.name} 님은 이미 해당 채널에 있어요`);
-        continue;
-      }
-      await member.voice.setChannel(channelId);
-      console.log(`✅ [${teamLabel}] ${p.name} 님 이동 완료`);
-      // 디스코드 rate limit 방지를 위해 각 이동 사이에 1.5초 대기
-      await sleep(4000);
-    } catch (err) {
-      console.error(`❌ [${teamLabel}] ${p.name} 이동 실패:`, err.message);
-      // 실패해도 다음 멤버 처리 전에 약간 대기
-      await sleep(4000);
+    const member = await findMemberByName(guild, p.name);
+    if (!member) {
+      console.log(`⚠️ [${teamLabel}] 멤버를 찾을 수 없음: ${p.name}`);
+      continue;
     }
+    if (!member.voice.channelId) {
+      console.log(`⚠️ [${teamLabel}] ${p.name} 님은 음성 채널에 없어요`);
+      continue;
+    }
+    if (member.voice.channelId === channelId) {
+      console.log(`ℹ️ [${teamLabel}] ${p.name} 님은 이미 해당 채널에 있어요`);
+      continue;
+    }
+    await moveOneMember(member, channelId, teamLabel, p.name);
+    // 각 멤버 이동 사이에 기본 대기 (성공/실패 무관)
+    await sleep(7000);
   }
 }
 
